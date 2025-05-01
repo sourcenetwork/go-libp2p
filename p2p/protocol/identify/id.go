@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"slices"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/core/record"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/internal/rate"
 	useragent "github.com/libp2p/go-libp2p/p2p/protocol/identify/internal/user-agent"
 	"github.com/libp2p/go-libp2p/p2p/protocol/identify/pb"
 
@@ -53,6 +55,21 @@ const (
 	// localhost, private IP or public IP address
 	recentlyConnectedPeerMaxAddrs = 20
 	connectedPeerMaxAddrs         = 500
+)
+
+var (
+	defaultNetworkPrefixRateLimits = []rate.PrefixLimit{
+		{Prefix: netip.MustParsePrefix("127.0.0.0/8"), Limit: rate.Limit{}}, // inf
+		{Prefix: netip.MustParsePrefix("::1/128"), Limit: rate.Limit{}},     // inf
+	}
+	defaultGlobalRateLimit      = rate.Limit{RPS: 2000, Burst: 3000}
+	defaultIPv4SubnetRateLimits = []rate.SubnetLimit{
+		{PrefixLength: 24, Limit: rate.Limit{RPS: 0.2, Burst: 10}}, // 1 every 5 seconds
+	}
+	defaultIPv6SubnetRateLimits = []rate.SubnetLimit{
+		{PrefixLength: 56, Limit: rate.Limit{RPS: 0.2, Burst: 10}}, // 1 every 5 seconds
+		{PrefixLength: 48, Limit: rate.Limit{RPS: 0.5, Burst: 20}}, // 1 every 2 seconds
+	}
 )
 
 type identifySnapshot struct {
@@ -174,6 +191,8 @@ type idService struct {
 	}
 
 	natEmitter *natEmitter
+
+	rateLimiter *rate.Limiter
 }
 
 type normalizer interface {
@@ -207,6 +226,15 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 		setupCompleted:          make(chan struct{}),
 		metricsTracer:           cfg.metricsTracer,
 		timeout:                 cfg.timeout,
+		rateLimiter: &rate.Limiter{
+			GlobalLimit:         defaultGlobalRateLimit,
+			NetworkPrefixLimits: defaultNetworkPrefixRateLimits,
+			SubnetRateLimiter: rate.SubnetLimiter{
+				IPv4SubnetLimits: defaultIPv4SubnetRateLimits,
+				IPv6SubnetLimits: defaultIPv6SubnetRateLimits,
+				GracePeriod:      1 * time.Minute,
+			},
+		},
 	}
 
 	var normalize func(ma.Multiaddr) ma.Multiaddr
@@ -249,7 +277,7 @@ func NewIDService(h host.Host, opts ...Option) (*idService, error) {
 func (ids *idService) Start() {
 	ids.Host.Network().Notify((*netNotifiee)(ids))
 	ids.Host.SetStreamHandler(ID, ids.handleIdentifyRequest)
-	ids.Host.SetStreamHandler(IDPush, ids.handlePush)
+	ids.Host.SetStreamHandler(IDPush, ids.rateLimiter.Limit(ids.handlePush))
 	ids.updateSnapshot()
 	close(ids.setupCompleted)
 
@@ -869,7 +897,6 @@ func (ids *idService) consumeMessage(mes *pb.Identify, c network.Conn, isPush bo
 		ProtocolVersion:  pv,
 		AgentVersion:     av,
 	})
-
 }
 
 func (ids *idService) consumeSignedPeerRecord(p peer.ID, signedPeerRecord *record.Envelope) ([]ma.Multiaddr, error) {
