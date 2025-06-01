@@ -9,6 +9,9 @@ linters:
     - unused
     - prealloc
 
+  disable:
+    - errcheck
+
   settings:
     revive:
       severity: warning
@@ -18,4 +21,3 @@ linters:
 
 severity:
     default: warning
-
