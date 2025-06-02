@@ -18,6 +18,7 @@ linters:
       rules:
         - name: unused-parameter
           severity: warning
+          disabled: true
 
 severity:
-    default: warning
+  default: warning
