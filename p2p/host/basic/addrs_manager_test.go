@@ -1,13 +1,17 @@
 package basichost
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+	"github.com/libp2p/go-libp2p/p2p/protocol/autonatv2"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 	"github.com/stretchr/testify/assert"
@@ -135,7 +139,7 @@ type mockNatManager struct {
 	GetMappingFunc func(addr ma.Multiaddr) ma.Multiaddr
 }
 
-func (m *mockNatManager) Close() error {
+func (*mockNatManager) Close() error {
 	return nil
 }
 
@@ -146,7 +150,7 @@ func (m *mockNatManager) GetMapping(addr ma.Multiaddr) ma.Multiaddr {
 	return m.GetMappingFunc(addr)
 }
 
-func (m *mockNatManager) HasDiscoveredNAT() bool {
+func (*mockNatManager) HasDiscoveredNAT() bool {
 	return true
 }
 
@@ -170,6 +174,8 @@ type addrsManagerArgs struct {
 	AddrsFactory         AddrsFactory
 	ObservedAddrsManager observedAddrsManager
 	ListenAddrs          func() []ma.Multiaddr
+	AutoNATClient        autonatv2Client
+	Bus                  event.Bus
 }
 
 type addrsManagerTestCase struct {
@@ -179,13 +185,16 @@ type addrsManagerTestCase struct {
 }
 
 func newAddrsManagerTestCase(t *testing.T, args addrsManagerArgs) addrsManagerTestCase {
-	eb := eventbus.NewBus()
+	eb := args.Bus
+	if eb == nil {
+		eb = eventbus.NewBus()
+	}
 	if args.AddrsFactory == nil {
 		args.AddrsFactory = func(addrs []ma.Multiaddr) []ma.Multiaddr { return addrs }
 	}
 	addrsUpdatedChan := make(chan struct{}, 1)
 	am, err := newAddrsManager(
-		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, nil, args.ObservedAddrsManager, addrsUpdatedChan,
+		eb, args.NATManager, args.AddrsFactory, args.ListenAddrs, nil, args.ObservedAddrsManager, addrsUpdatedChan, args.AutoNATClient,
 	)
 	require.NoError(t, err)
 
@@ -196,6 +205,7 @@ func newAddrsManagerTestCase(t *testing.T, args addrsManagerArgs) addrsManagerTe
 	rchEm, err := eb.Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
 	require.NoError(t, err)
 
+	t.Cleanup(am.Close)
 	return addrsManagerTestCase{
 		addrsManager: am,
 		PushRelay: func(relayAddrs []ma.Multiaddr) {
@@ -425,17 +435,113 @@ func TestAddrsManager(t *testing.T) {
 	})
 }
 
+func TestAddrsManagerReachabilityEvent(t *testing.T) {
+	publicQUIC, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1234/quic-v1")
+	publicQUIC2, _ := ma.NewMultiaddr("/ip4/1.2.3.4/udp/1235/quic-v1")
+	publicTCP, _ := ma.NewMultiaddr("/ip4/1.2.3.4/tcp/1234")
+
+	bus := eventbus.NewBus()
+
+	sub, err := bus.Subscribe(new(event.EvtHostReachableAddrsChanged))
+	require.NoError(t, err)
+	defer sub.Close()
+
+	am := newAddrsManagerTestCase(t, addrsManagerArgs{
+		Bus: bus,
+		// currently they aren't being passed to the reachability tracker
+		ListenAddrs: func() []ma.Multiaddr { return []ma.Multiaddr{publicQUIC, publicQUIC2, publicTCP} },
+		AutoNATClient: mockAutoNATClient{
+			F: func(_ context.Context, reqs []autonatv2.Request) (autonatv2.Result, error) {
+				if reqs[0].Addr.Equal(publicQUIC) {
+					return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPublic}, nil
+				} else if reqs[0].Addr.Equal(publicTCP) || reqs[0].Addr.Equal(publicQUIC2) {
+					return autonatv2.Result{Addr: reqs[0].Addr, Idx: 0, Reachability: network.ReachabilityPrivate}, nil
+				}
+				return autonatv2.Result{}, errors.New("invalid")
+			},
+		},
+	})
+
+	initialUnknownAddrs := []ma.Multiaddr{publicQUIC, publicTCP, publicQUIC2}
+
+	// First event: all addresses are initially unknown
+	select {
+	case e := <-sub.Out():
+		evt := e.(event.EvtHostReachableAddrsChanged)
+		require.Empty(t, evt.Reachable)
+		require.Empty(t, evt.Unreachable)
+		require.ElementsMatch(t, initialUnknownAddrs, evt.Unknown)
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected initial event for reachability change")
+	}
+
+	// Wait for probes to complete and addresses to be classified
+	reachableAddrs := []ma.Multiaddr{publicQUIC}
+	unreachableAddrs := []ma.Multiaddr{publicTCP, publicQUIC2}
+	select {
+	case e := <-sub.Out():
+		evt := e.(event.EvtHostReachableAddrsChanged)
+		require.ElementsMatch(t, reachableAddrs, evt.Reachable)
+		require.ElementsMatch(t, unreachableAddrs, evt.Unreachable)
+		require.Empty(t, evt.Unknown)
+		reachable, unreachable, unknown := am.ConfirmedAddrs()
+		require.ElementsMatch(t, reachable, reachableAddrs)
+		require.ElementsMatch(t, unreachable, unreachableAddrs)
+		require.Empty(t, unknown)
+	case <-time.After(5 * time.Second):
+		t.Fatal("expected final event for reachability change after probing")
+	}
+}
+
+func TestRemoveIfNotInSource(t *testing.T) {
+	var addrs []ma.Multiaddr
+	for i := 0; i < 10; i++ {
+		addrs = append(addrs, ma.StringCast(fmt.Sprintf("/ip4/1.2.3.4/tcp/%d", i)))
+	}
+	slices.SortFunc(addrs, func(a, b ma.Multiaddr) int { return a.Compare(b) })
+	cases := []struct {
+		addrs    []ma.Multiaddr
+		source   []ma.Multiaddr
+		expected []ma.Multiaddr
+	}{
+		{},
+		{addrs: slices.Clone(addrs[:5]), source: nil, expected: nil},
+		{addrs: nil, source: addrs, expected: nil},
+		{addrs: []ma.Multiaddr{addrs[0]}, source: []ma.Multiaddr{addrs[0]}, expected: []ma.Multiaddr{addrs[0]}},
+		{addrs: slices.Clone(addrs), source: []ma.Multiaddr{addrs[0]}, expected: []ma.Multiaddr{addrs[0]}},
+		{addrs: slices.Clone(addrs), source: slices.Clone(addrs[5:]), expected: slices.Clone(addrs[5:])},
+		{addrs: slices.Clone(addrs[:5]), source: []ma.Multiaddr{addrs[0], addrs[2], addrs[8]}, expected: []ma.Multiaddr{addrs[0], addrs[2]}},
+	}
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			addrs := removeNotInSource(tc.addrs, tc.source)
+			require.ElementsMatch(t, tc.expected, addrs, "%s\n%s", tc.expected, tc.addrs)
+		})
+	}
+}
+
 func BenchmarkAreAddrsDifferent(b *testing.B) {
 	var addrs [10]ma.Multiaddr
 	for i := 0; i < len(addrs); i++ {
 		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1", i))
 	}
-	am := &addrsManager{}
 	b.Run("areAddrsDifferent", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			am.areAddrsDifferent(addrs[:], addrs[:])
+			areAddrsDifferent(addrs[:], addrs[:])
 		}
 	})
+}
+
+func BenchmarkRemoveIfNotInSource(b *testing.B) {
+	var addrs [10]ma.Multiaddr
+	for i := 0; i < len(addrs); i++ {
+		addrs[i] = ma.StringCast(fmt.Sprintf("/ip4/1.1.1.%d/tcp/1", i))
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		removeNotInSource(slices.Clone(addrs[:5]), addrs[:])
+	}
 }
