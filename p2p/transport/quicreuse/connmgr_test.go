@@ -189,7 +189,7 @@ func getTLSConfForProto(t *testing.T, alpn string) (peer.ID, *tls.Config) {
 	require.NoError(t, err)
 	var tlsConf tls.Config
 	tlsConf.NextProtos = []string{alpn}
-	tlsConf.GetConfigForClient = func(info *tls.ClientHelloInfo) (*tls.Config, error) {
+	tlsConf.GetConfigForClient = func(_ *tls.ClientHelloInfo) (*tls.Config, error) {
 		c, _ := identity.ConfigForPeer("")
 		c.NextProtos = tlsConf.NextProtos
 		return c, nil
@@ -378,12 +378,12 @@ func TestAssociate(t *testing.T) {
 		require.Contains(t, []string{ln2.Addr().String(), ln3.Addr().String()}, tr3.LocalAddr().String())
 	}
 
-	t.Run("MultipleUnspecifiedListeners", func(t *testing.T) {
+	t.Run("MultipleUnspecifiedListeners", func(_ *testing.T) {
 		testAssociate(ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
 			ma.StringCast("/ip4/0.0.0.0/udp/0/quic-v1"),
 			&net.UDPAddr{IP: net.IPv4(1, 1, 1, 1), Port: 1})
 	})
-	t.Run("MultipleSpecificListeners", func(t *testing.T) {
+	t.Run("MultipleSpecificListeners", func(_ *testing.T) {
 		testAssociate(ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
 			ma.StringCast("/ip4/127.0.0.1/udp/0/quic-v1"),
 			&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 1},

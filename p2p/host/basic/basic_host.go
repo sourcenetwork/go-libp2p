@@ -539,7 +539,7 @@ func (h *BasicHost) EventBus() event.Bus {
 //
 // (Thread-safe)
 func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHandler) {
-	h.Mux().AddHandler(pid, func(p protocol.ID, rwc io.ReadWriteCloser) error {
+	h.Mux().AddHandler(pid, func(_ protocol.ID, rwc io.ReadWriteCloser) error {
 		is := rwc.(network.Stream)
 		handler(is)
 		return nil
@@ -552,7 +552,7 @@ func (h *BasicHost) SetStreamHandler(pid protocol.ID, handler network.StreamHand
 // SetStreamHandlerMatch sets the protocol handler on the Host's Mux
 // using a matching function to do protocol comparisons
 func (h *BasicHost) SetStreamHandlerMatch(pid protocol.ID, m func(protocol.ID) bool, handler network.StreamHandler) {
-	h.Mux().AddHandlerWithFunc(pid, m, func(p protocol.ID, rwc io.ReadWriteCloser) error {
+	h.Mux().AddHandlerWithFunc(pid, m, func(_ protocol.ID, rwc io.ReadWriteCloser) error {
 		is := rwc.(network.Stream)
 		handler(is)
 		return nil

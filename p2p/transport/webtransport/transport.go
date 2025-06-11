@@ -215,7 +215,7 @@ func (t *transport) dial(ctx context.Context, addr ma.Multiaddr, url, sni string
 		return nil, nil, err
 	}
 	dialer := webtransport.Dialer{
-		DialAddr: func(ctx context.Context, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+		DialAddr: func(_ context.Context, _ string, _ *tls.Config, _ *quic.Config) (quic.EarlyConnection, error) {
 			return conn.(quic.EarlyConnection), nil
 		},
 		QUICConfig: t.connManager.ClientConfig().Clone(),
