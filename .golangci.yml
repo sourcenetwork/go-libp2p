@@ -16,9 +16,6 @@ linters:
     - errcheck
     - staticcheck
 
-  disable:
-    - errcheck
-
   settings:
     revive:
       severity: warning
