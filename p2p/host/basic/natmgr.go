@@ -294,6 +294,6 @@ type nmgrNetNotifiee natManager
 
 func (nn *nmgrNetNotifiee) natManager() *natManager                          { return (*natManager)(nn) }
 func (nn *nmgrNetNotifiee) Listen(network.Network, ma.Multiaddr)             { nn.natManager().sync() }
-func (nn *nmgrNetNotifiee) ListenClose(n network.Network, addr ma.Multiaddr) { nn.natManager().sync() }
+func (nn *nmgrNetNotifiee) ListenClose(_ network.Network, _ ma.Multiaddr) { nn.natManager().sync() }
 func (nn *nmgrNetNotifiee) Connected(network.Network, network.Conn)          {}
 func (nn *nmgrNetNotifiee) Disconnected(network.Network, network.Conn)       {}

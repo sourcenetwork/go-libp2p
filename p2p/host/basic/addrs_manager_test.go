@@ -30,7 +30,7 @@ func TestAppendNATAddrs(t *testing.T) {
 			// nat mapping success, obsaddress ignored
 			Listen: ma.StringCast("/ip4/0.0.0.0/udp/1/quic-v1"),
 			Nat:    ma.StringCast("/ip4/1.1.1.1/udp/10/quic-v1"),
-			ObsAddrFunc: func(m ma.Multiaddr) []ma.Multiaddr {
+			ObsAddrFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
 				return []ma.Multiaddr{ma.StringCast("/ip4/2.2.2.2/udp/100/quic-v1")}
 			},
 			Expected: []ma.Multiaddr{ma.StringCast("/ip4/1.1.1.1/udp/10/quic-v1")},
@@ -116,7 +116,7 @@ func TestAppendNATAddrs(t *testing.T) {
 		t.Run(tc.Name, func(t *testing.T) {
 			as := &addrsManager{
 				natManager: &mockNatManager{
-					GetMappingFunc: func(addr ma.Multiaddr) ma.Multiaddr {
+					GetMappingFunc: func(_ ma.Multiaddr) ma.Multiaddr {
 						return tc.Nat
 					},
 				},
@@ -326,7 +326,7 @@ func TestAddrsManager(t *testing.T) {
 		}
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
+				ObservedAddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
 					return quicAddrs
 				},
 			},
@@ -342,7 +342,7 @@ func TestAddrsManager(t *testing.T) {
 	t.Run("public addrs removed when private", func(t *testing.T) {
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
+				ObservedAddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
 					return []ma.Multiaddr{publicQUIC}
 				},
 			},
@@ -384,7 +384,7 @@ func TestAddrsManager(t *testing.T) {
 				return nil
 			},
 			ObservedAddrsManager: &mockObservedAddrs{
-				ObservedAddrsForFunc: func(addr ma.Multiaddr) []ma.Multiaddr {
+				ObservedAddrsForFunc: func(_ ma.Multiaddr) []ma.Multiaddr {
 					return []ma.Multiaddr{publicQUIC}
 				},
 			},
@@ -404,7 +404,7 @@ func TestAddrsManager(t *testing.T) {
 	t.Run("updates addresses on signaling", func(t *testing.T) {
 		updateChan := make(chan struct{})
 		am := newAddrsManagerTestCase(t, addrsManagerArgs{
-			AddrsFactory: func(addrs []ma.Multiaddr) []ma.Multiaddr {
+			AddrsFactory: func(_ []ma.Multiaddr) []ma.Multiaddr {
 				select {
 				case <-updateChan:
 					return []ma.Multiaddr{publicQUIC}

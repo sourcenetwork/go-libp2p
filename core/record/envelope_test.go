@@ -164,7 +164,7 @@ func (r failingRecord) MarshalRecord() ([]byte, error) {
 	}
 	return nil, errors.New("marshal failed")
 }
-func (r failingRecord) UnmarshalRecord(data []byte) error {
+func (r failingRecord) UnmarshalRecord(_ []byte) error {
 	if r.allowUnmarshal {
 		return nil
 	}

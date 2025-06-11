@@ -127,17 +127,17 @@ func TestManyBackoffFactory(t *testing.T) {
 	rngSource := rand.NewSource(0)
 	concurrent := 10
 
-	t.Run("Exponential", func(t *testing.T) {
+	t.Run("Exponential", func(_ *testing.T) {
 		testManyBackoffFactoryHelper(concurrent,
 			NewExponentialBackoff(time.Millisecond*650, time.Second*7, FullJitter, time.Second, 1.5, -time.Millisecond*400, rngSource),
 		)
 	})
-	t.Run("Polynomial", func(t *testing.T) {
+	t.Run("Polynomial", func(_ *testing.T) {
 		testManyBackoffFactoryHelper(concurrent,
 			NewPolynomialBackoff(time.Second, time.Second*33, NoJitter, time.Second, []float64{0.5, 2, 3}, rngSource),
 		)
 	})
-	t.Run("Fixed", func(t *testing.T) {
+	t.Run("Fixed", func(_ *testing.T) {
 		testManyBackoffFactoryHelper(concurrent,
 			NewFixedBackoff(time.Second),
 		)

@@ -62,7 +62,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					}
 
 					peerScope := mocknetwork.NewMockPeerScope(ctrl)
-					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, pri uint8) {
+					peerScope.EXPECT().ReserveMemory(gomock.Any(), gomock.Any()).AnyTimes().Do(func(amount int, _ uint8) {
 						reservedMemory.Add(int32(amount))
 					})
 					peerScope.EXPECT().ReleaseMemory(gomock.Any()).AnyTimes().Do(func(amount int) {
@@ -97,7 +97,7 @@ func TestResourceManagerIsUsed(t *testing.T) {
 					var allStreamsDone sync.WaitGroup
 
 					rcmgr.EXPECT().OpenConnection(expectedDir, expectFd, expectedAddr).Return(connScope, nil)
-					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(id peer.ID, dir network.Direction) (network.StreamManagementScope, error) {
+					rcmgr.EXPECT().OpenStream(expectedPeer, gomock.Any()).AnyTimes().DoAndReturn(func(_ peer.ID, _ network.Direction) (network.StreamManagementScope, error) {
 						allStreamsDone.Add(1)
 						streamScope := mocknetwork.NewMockStreamManagementScope(ctrl)
 						// No need to track these memory reservations since we assert that Done is called

@@ -110,7 +110,7 @@ func newListener(reuseListener quicreuse.Listener, t *transport, isStaticTLSConf
 					return context.WithValue(ctx, connKey{}, c)
 				},
 			},
-			CheckOrigin: func(r *http.Request) bool { return true },
+			CheckOrigin: func(_ *http.Request) bool { return true },
 		},
 	}
 	ln.ctx, ln.ctxCancel = context.WithCancel(context.Background())

@@ -36,7 +36,7 @@ func (c *tconn) Close() error {
 	return nil
 }
 
-func (c *tconn) CloseWithError(code network.ConnErrorCode) error {
+func (c *tconn) CloseWithError(_ network.ConnErrorCode) error {
 	atomic.StoreUint32(&c.closed, 1)
 	if c.disconnectNotify != nil {
 		c.disconnectNotify(nil, c)
@@ -805,7 +805,7 @@ type mockConn struct {
 }
 
 func (m mockConn) Close() error                                          { panic("implement me") }
-func (m mockConn) CloseWithError(errCode network.ConnErrorCode) error    { panic("implement me") }
+func (m mockConn) CloseWithError(_ network.ConnErrorCode) error    { panic("implement me") }
 func (m mockConn) LocalPeer() peer.ID                                    { panic("implement me") }
 func (m mockConn) RemotePeer() peer.ID                                   { panic("implement me") }
 func (m mockConn) RemotePublicKey() crypto.PubKey                        { panic("implement me") }
@@ -814,7 +814,7 @@ func (m mockConn) RemoteMultiaddr() ma.Multiaddr                         { panic
 func (m mockConn) Stat() network.ConnStats                               { return m.stats }
 func (m mockConn) ID() string                                            { panic("implement me") }
 func (m mockConn) IsClosed() bool                                        { panic("implement me") }
-func (m mockConn) NewStream(ctx context.Context) (network.Stream, error) { panic("implement me") }
+func (m mockConn) NewStream(_ context.Context) (network.Stream, error) { panic("implement me") }
 func (m mockConn) GetStreams() []network.Stream                          { panic("implement me") }
 func (m mockConn) Scope() network.ConnScope                              { panic("implement me") }
 func (m mockConn) ConnState() network.ConnectionState                    { return network.ConnectionState{} }
